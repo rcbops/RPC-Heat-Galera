@@ -34,6 +34,17 @@ found [here] (http://docs.openstack.org/developer/heat/getting_started/jeos_buil
 * [python-heatclient](https://github.com/openstack/python-heatclient)
 `>= v0.2.12`:
 
+Heat-client Usage
+=============
+Here is an example of how to deploy this template using the
+[python-heatclient](https://github.com/openstack/python-heatclient):
+
+```
+heat stack-create galera-stack -f galera-stack.yaml \
+  -e env.yaml -P flavor=m1.small;floating-network-id=<NET_ID>; \
+  keyname=<KEYNAME>;image=<IMAGE_ID>;db-username=<username>;db-user-password=<password>; \
+  db-remotehost=<host>;apps-network=<APP_NET_ID>;database=drupal;
+```
 
 # Parameter descriptions 
 
@@ -46,16 +57,14 @@ The heat template takes in several parameters. Below is the description of each.
 
 3. floating-network-id: UUID of the external network. The private network created by this stack will route to this network. Also, any floating ip's needed by this stack will come this network.
 
-4. coms-key-name: Unique name of the keypair for node to node communications within the stack.
+4. db-username: The username that will be created on the cluser. This will typically be the user required for your app to connect to the app database. 
 
-5. db-username: The username that will be created on the cluser. This will typically be the user required for your app to connect to the app database. 
+5. db-user-password: The password for the user above. This is a hidden paramter, meaning it will not be displayed by heat after stack creation. 
 
-6. db-user-password: The password for the user above. This is a hidden paramter, meaning it will not be displayed by heat after stack creation. 
+6. db-remotehost: The host from which the user will connect. Typically the load balancer of the Galera cluster, but defaults to '%'
 
-7. db-remotehost: The host from which the user will connect. Typically the load balancer of the Galera cluster, but defaults to '%'
+7. apps-network: The network UUID of the Apps network. 
 
-8. apps-network: The network UUID of the Apps network. 
+8. database: The database that will be created for the app 
 
-9. database: The database that will be created for the app 
-
-10. flavor: The size of the database instances. 
+9. flavor: The size of the database instances. 
