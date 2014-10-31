@@ -2,7 +2,7 @@
 * 1 salt-master instance
 * 1 haproxy instance w/ salt-minion
 * 1 MariaDB/Galera bootstrap node with salt-minion
-* 2 MariaDB/Galera Nodes that replicate accross the cluster with salt-minion, where n is an even number.
+* 2 MariaDB/Galera Nodes in addition to the bootstrap node with salt-minion on them. 
 
 # Description:
 
