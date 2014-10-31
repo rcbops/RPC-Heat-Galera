@@ -1,0 +1,834 @@
+heat_template_version: 2013-05-23
+
+description: |
+  Deploys Salt-master and serveral salt-minions for a MariaDB/Galera cluster. 
+  One Minion will be for haproxy
+  One Minion will act as a bootstrap node
+  <minion-count> minions will act as additional nodes in the cluster.  
+
+parameter_groups: 
+- label: These are the paramters used to for creating a database user and access rights for that user. 
+  description: These parameters are used for creating user-defined database users and access rights. 
+  parameters: 
+  - db-username
+  - db-user-password
+  - db-remotehost
+  - apps-network
+
+parameters:
+
+  keyname:
+    type: string
+    label: Salt-Master Keyname.
+    description: The name of the key that should be used to ssh into the Salt-Master.
+
+  image:
+    type: string
+    label: Image Name
+    description: Name of the existing image to use for every vm spun up by this stack. The image should have heat-config and heat-config-script baked in.
+
+  floating-network-id:
+    type: string
+    label: External Network UUID
+    description: UUID of the external network. The private network created by this stack will route to this network. Also any floating ip's needed by this stack will come this network.
+
+  db-username:
+    type: string
+    label: Username to create on the database
+    description: The username that will be created on the galera cluster
+
+  db-user-password:
+    type: string
+    hidden: true
+    label: Password for the db-username
+    description: This is the password for the db-username specified. 
+
+  db-remotehost:
+    type: string
+    default: "%"
+    label: Name of the remote hostname
+    description: The hostname of the remote host that will have access to the database using the username specified above. 
+
+  apps-network: 
+    type: string
+    label: Network UUID of Apps network
+    description: The network UUID of the network your app (Magento, Drupal, etc.) are on. 
+
+  database:
+    type: string
+    label: Database to create for the app
+    description: The database name that will be created for the app
+
+  flavor: 
+    type: string
+    label: flavor
+    description: Flavor of DB instances
+    default: m1.small
+
+
+
+
+resources:
+
+
+  # Random string to aid in naming things. 
+  stack-string:
+    type: OS::Heat::RandomString
+    properties:
+      length: 6
+      sequence: lettersdigits
+
+  # Will be used to generate a random password
+  # 32 characters long consisting of alpha numeric characters
+  secret:
+    type: OS::Heat::RandomString
+    properties:
+      length: 32
+      sequence: lettersdigits
+
+  admin_password:
+    type: OS::Heat::RandomString
+    properties:
+      length: 10
+      sequence: lettersdigits
+
+  #This is the security group for the haproxy node to allow mysql, web, icmp, and  ssh traffic
+  secgroup: 
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: 
+        str_replace:
+          template: galera-$stackstr-secgroup
+          params:
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value
+      description: Ping, SSH, MySQL, and web traffic is allowed
+      rules:
+      - protocol: icmp
+      - protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol: tcp
+        port_range_min: 3306
+        port_range_max: 3306
+      - protocol: tcp
+        port_range_min: 13306
+        port_range_max: 13306
+      - protocol: tcp
+        port_range_min: 443
+        port_range_max: 443
+      - protocol: tcp
+        port_range_min: 80
+        port_range_max: 80
+
+  # Keypair for communicating between nodes within the stack.
+  # Will allow minions to ssh into the master and vice versa.
+  coms:
+    type: OS::Nova::KeyPair
+    properties:
+      name:
+        str_replace:
+          template: galera-$stackstr-coms
+          params:
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value
+      save_private_key: true 
+
+  # Private network for this stack
+  net:
+    type: OS::Neutron::Net
+
+  # Private subnet for this stack
+  subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id:
+        get_resource: net
+      cidr: 10.10.10.0/24
+      dns_nameservers:
+        - 8.8.8.8
+        - 4.2.2.2
+
+  # Routes the private network to the external network.
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: 
+          get_param: floating-network-id
+
+  # Router interface
+  interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id:
+        get_resource: router
+      subnet_id: 
+        get_resource: subnet
+
+  # One floating ip for the salt-master node
+  master-ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: 
+        get_param: floating-network-id
+
+  # One port for the salt-master node
+  master-port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: 
+        get_resource: net
+
+  apps-net-port:
+    type: OS::Neutron::Port
+    properties:
+      network_id:
+        get_param: apps-network
+      security_groups: 
+        - {get_resource: secgroup} 
+
+  # Software configuration script for the salt-master node
+  # Installs salt-master, sets permission on some personality files
+  # and uses git to clone any provided state/formula repos
+  config-salt-master:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: public_key
+        - name: state_repos
+      config: |
+        #!/bin/bash
+        chmod 0700 /root/.ssh/coms_rsa
+        chmod 0600 /srv/pillar/drupal.sls
+
+        # Add coms from minions to master
+        echo "$public_key" >> /root/.ssh/authorized_keys
+
+        # Install git
+        apt-get install -y git
+            
+        # Install salt master
+        echo "Install Salt Master"
+        curl -L http://bootstrap.saltstack.org | sh -s -- -M -N
+        mkdir /srv/salt
+        mkdir /srv/salt/orchestration
+        mkdir /srv/pillar
+        mkdir /srv/pillar/mysql
+        mkdir /srv/pillar/galera
+        mkdir /srv/pillar/haproxy
+        echo -e 'file_roots:\n  base:\n    - /srv/salt' >> /etc/salt/master
+
+        # Clone state/formula repos in state root directory
+        cd /srv/salt
+        while read -r line
+        do
+            if [ -n "$line" ]; then
+                git clone $line
+            fi
+        done <<< "$state_repos"
+
+        # Finally - Restart salt service
+        service salt-master restart
+
+  # Software configuration for salt minion
+  # Installs salt-minion, sets up authentication from minion to master,
+  # and sets permissions of any personality files.
+  config-salt-minion:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      inputs:
+        - name: public_key
+        - name: master
+      config: |
+        #!/bin/bash
+        chmod 0700 /root/.ssh/coms_rsa
+            
+        # Add coms from minions to master
+        echo "$public_key" >> /root/.ssh/authorized_keys
+
+        # Install salt minion
+        curl -L http://bootstrap.saltstack.org | sh -s
+        echo master: $master >> /etc/salt/minion
+
+        service salt-minion restart
+
+        ssh-keyscan -H $master >> /root/.ssh/known_hosts
+
+        echo "Sleeping for 20s"
+        sleep 20
+
+        MASTER_PKI_PATH="/etc/salt/pki/master/minions/"
+        MASTER_PKI_PATH_PRE="/etc/salt/pki/master/minions_pre/"
+        MINION_PKI_PATH="/etc/salt/pki/minion/minion.pub"
+        HOSTNAME=`hostname --fqdn`
+
+        cp $MINION_PKI_PATH /root/minion_key
+
+        scp -i /root/.ssh/coms_rsa /root/minion_key root@$master:/tmp/$HOSTNAME
+
+        ssh -i /root/.ssh/coms_rsa root@$master "mv /tmp/$HOSTNAME $MASTER_PKI_PATH$HOSTNAME; chmod 700 $MASTER_PKI_PATH$HOSTNAME; rm $MASTER_PKI_PATH_PRE$HOSTNAME"
+
+        service salt-minion restart
+        rm /root/minion_key
+        rm /root/.ssh/coms_rsa
+        /sbin/ifconfig -a | /usr/bin/awk '/eth.*Ethernet/ {print $1}' | while read E; do /usr/bin/sudo /sbin/dhclient $E; done
+
+  # Software deployment for salt-master. Deploys the salt-master softrware
+  # configuration.
+  # Also lists the git repos necessary to make the drupal stack work.
+  deploy-salt-master:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      input_values:
+        public_key:
+          get_attr:
+            - coms
+            - public_key
+        state_repos: |
+          https://github.com/elextro/galera.git
+      config:
+        get_resource: config-salt-master
+      server:
+        get_resource: master
+
+  # The salt master instance
+  # Should have one floating ip
+  master:
+    type: OS::Nova::Server
+    depends_on: interface
+    properties:
+      key_name:
+        get_param: keyname
+      image: 
+        get_param: image
+      flavor: 
+        get_param: flavor
+      name:
+        str_replace:
+          template: galera-$stackstr-master
+          params:
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value 
+      personality:
+
+        # Private key for ssh'ing into minions
+        /root/.ssh/coms_rsa:
+          get_attr:
+            - coms
+            - private_key
+
+        #The top.sls file for salt states.
+        #Dictates which minions get which formulas
+        /srv/salt/orchestration/galera_cluster.sls: |
+          haproxy:
+            salt.state:
+              - tgt: 'roles:haproxy'
+              - tgt_type: grain
+              - sls:
+                - galera.haproxy
+                - galera.mysql
+          bootstrap:
+            salt.state:
+              - tgt: 'roles:db_bootstrap'
+              - tgt_type: grain
+              - sls:
+                - galera
+              - require:
+                - salt: haproxy
+          non-bootstrap:
+            salt.state:
+              - tgt: 'roles:db'
+              - tgt_type: grain
+              - sls:
+                - galera
+              - require:
+                - salt: bootstrap
+
+        #The top.sls file for salt pillars
+        #Dictates which minions get which pillars.
+        /srv/pillar/top.sls: |
+          base:
+            '*':
+              - mysql
+              - galera
+              
+        #The galera pillar. Contains Some basic information for mariadb/galera config and installation
+        /srv/pillar/galera/init.sls: 
+          str_replace:
+            template: |
+              interfaces:
+                private: eth0
+                public: eth0
+              mine_functions:
+                network.ip_addrs: [eth0]
+                network.interfaces: []
+              mine_interval: 1
+              mdb_cfg_files:
+                ubuntu_cluster:
+                  path: /etc/mysql/conf.d/cluster.cnf
+                  source: salt://galera/config/cluster.cnf
+                ubuntu_maintenance:
+                  path: /etc/mysql/debian.cnf
+                  source: salt://galera/config/debian.cnf
+              mdb_config:
+                provider: /usr/lib/galera/libgalera_smm.so
+              mdb_repo:
+                baseurl: http://mirror.jmu.edu/pub/mariadb/repo/10.0/ubuntu
+                keyserver: hkp://keyserver.ubuntu.com:80
+                keyid: '0xcbcb082a1bb943db'
+                file: /etc/apt/sources.list
+              percona_repo:
+                keyserver: keys.gnupg.net
+                keyid: '1C4CBDCDCD2EFD2A'
+                file: /etc/apt/sources.list
+              user_via_heat: 
+                name: $user
+                password: $password
+                remotehost: "$remotehost"
+              database:
+                name: $database
+            params: 
+              $user:
+                get_param: db-username
+              $password: 
+                get_param: db-user-password
+              $remotehost:
+                get_param: db-remotehost
+              $database:
+                get_param: database
+
+        /srv/pillar/mysql/init.sls:
+          str_replace: 
+            template: |
+              mysql_config:
+                dbuser: root
+                port: 3306
+                socket: /var/lib/mysql/mysql.sock
+                datadir: /var/lib/mysql/db_data
+                maintenance_password: $pw
+                admin_password: $admin_password
+            params:
+              $pw:
+                get_attr:
+                  - secret
+                  - value
+              $admin_password:
+                get_attr:
+                  - admin_password
+                  - value     
+
+      # Get access from the master-port
+      networks:
+        - port:
+            get_resource: master-port
+
+      # Using SoftwareConfigs - This needs to be set to SOFTWARE_CONFIG
+      user_data_format: SOFTWARE_CONFIG
+
+  # Associate the master floating ip to the master port
+  master-floating-ip-ass: 
+    type: OS::Neutron::FloatingIPAssociation
+    properties: 
+      floatingip_id:
+        get_resource: master-ip
+      port_id:
+        get_resource: master-port
+
+  # minion-group-db:
+  #   type: OS::Heat::ResourceGroup
+  #   depends_on: deploy-salt-master
+  #   properties:
+  #     count:
+  #       get_param: minion-count
+  #     resource_def:
+  #       type: Salt::Minion
+  #       properties:
+  #         flavor:
+  #           get_param: flavor
+  #         stack-prefix:
+  #           str_replace:
+  #             template: galera-$stackstr-db
+  #             params: 
+  #               $stackstr:
+  #                 get_attr: 
+  #                   - stack-string
+  #                   - value
+  #         private_key:
+  #           get_attr:
+  #             - coms
+  #             - private_key
+  #         public_key:
+  #           get_attr:
+  #             - coms
+  #             - public_key
+  #         image: 
+  #           get_param: image
+  #         network: 
+  #           get_resource: net
+  #         master: 
+  #           get_attr:
+  #             - master
+  #             - first_address
+  #         minion-config:
+  #           get_resource: config-salt-minion
+  #         minion-roles: "db"
+          
+
+  # Floating ip for haproxy node
+  # minion-haproxy-ip:
+  #   type: OS::Neutron::FloatingIP
+  #   properties:
+  #     floating_network_id: 
+  #       get_param: floating-network-id
+
+  # Port for haproxy node
+  minion-haproxy-port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: 
+        get_resource: net
+
+  # haproxy minion
+  minion-haproxy:
+    type: OS::Nova::Server
+    depends_on: interface
+    properties:
+      key_name:
+        get_param: keyname
+      flavor:
+        get_param: flavor
+      image:
+        get_param: image
+      name: 
+        str_replace:
+          template: galera-$stackstr-haproxy
+          params:
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value 
+      personality:
+
+        # Private key for node to node communication
+        /root/.ssh/coms_rsa:
+          get_attr:
+            - coms
+            - private_key
+
+        # Set the salt role to haproxy
+        /etc/salt/grains: |
+          roles:
+            - haproxy
+      
+      networks:
+        - port:
+            get_resource: minion-haproxy-port
+        - port: 
+            get_resource: apps-net-port
+
+      # Needs to be SOFTWARE_CONFIG when using SoftwareConfigs
+      user_data_format: SOFTWARE_CONFIG
+
+  # Associate haproxy floating ip to the port
+  # minion-haproxy-floating-ip-ass: 
+  #   type: OS::Neutron::FloatingIPAssociation
+  #   properties: 
+  #     floatingip_id:
+  #       get_resource: minion-haproxy-ip
+  #     port_id:
+  #       get_resource: minion-haproxy-port
+
+  # Deploys the salt-minion software config to the haproxy node.
+  deploy-haproxy:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: deploy-salt-master
+    properties:
+      input_values:
+        public_key:
+          get_attr:
+            - coms
+            - public_key
+        master:
+          get_attr:
+            - master
+            - first_address
+      config:
+        get_resource: config-salt-minion
+      server:
+        get_resource: minion-haproxy
+
+  # The bootstrap node of the cluster.
+  minion-db-bootstrap:
+    type: OS::Nova::Server
+    depends_on: interface
+    properties:
+      image:
+        get_param: image
+      flavor:
+        get_param: flavor
+      name: 
+        str_replace:
+          template: galera-$stackstr-db-bootstrap
+          params: 
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value
+      personality:
+
+        # Private key for node to node communications
+        /root/.ssh/coms_rsa:
+          get_attr:
+            - coms
+            - private_key
+
+        # Set the salt-grain roles to ['db']
+        /etc/salt/grains: |
+          roles:
+            - db_bootstrap
+
+      networks:
+        - network:
+            get_resource: net
+
+      # This needs to be set to SOFTWARE_CONFIG when using SoftwareConfigs
+      user_data_format: SOFTWARE_CONFIG
+
+
+  # The db node of the cluster.
+  minion-db2:
+    type: OS::Nova::Server
+    depends_on: interface
+    properties:
+      image:
+        get_param: image
+      flavor:
+        get_param: flavor
+      name: 
+        str_replace:
+          template: galera-$stackstr-db2
+          params: 
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value
+      personality:
+
+        # Private key for node to node communications
+        /root/.ssh/coms_rsa:
+          get_attr:
+            - coms
+            - private_key
+
+        # Set the salt-grain roles to ['db']
+        /etc/salt/grains: |
+          roles:
+            - db
+
+      networks:
+        - network:
+            get_resource: net
+
+      # This needs to be set to SOFTWARE_CONFIG when using SoftwareConfigs
+      user_data_format: SOFTWARE_CONFIG
+
+
+
+  # The db node of the cluster.
+  minion-db3:
+    type: OS::Nova::Server
+    depends_on: interface
+    properties:
+      image:
+        get_param: image
+      flavor:
+        get_param: flavor
+      name: 
+        str_replace:
+          template: galera-$stackstr-db3
+          params: 
+            $stackstr:
+              get_attr:
+                - stack-string
+                - value
+      personality:
+
+        # Private key for node to node communications
+        /root/.ssh/coms_rsa:
+          get_attr:
+            - coms
+            - private_key
+
+        # Set the salt-grain roles to ['db']
+        /etc/salt/grains: |
+          roles:
+            - db
+
+      networks:
+        - network:
+            get_resource: net
+
+      # This needs to be set to SOFTWARE_CONFIG when using SoftwareConfigs
+      user_data_format: SOFTWARE_CONFIG
+
+
+
+  # Deploys the salt-minion software to the bootstrap node
+  deploy-db-bootstrap:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: deploy-salt-master
+    properties:
+      input_values:
+        public_key:
+          get_attr:
+            - coms
+            - public_key
+        master:
+          get_attr:
+            - master
+            - first_address
+      config:
+        get_resource: config-salt-minion
+      server:
+        get_resource: minion-db-bootstrap
+
+  deploy-db2:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: deploy-salt-master
+    properties:
+      input_values:
+        public_key:
+          get_attr:
+            - coms
+            - public_key
+        master:
+          get_attr:
+            - master
+            - first_address
+      config:
+        get_resource: config-salt-minion
+      server:
+        get_resource: minion-db2
+
+  deploy-db3:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: deploy-salt-master
+    properties:
+      input_values:
+        public_key:
+          get_attr:
+            - coms
+            - public_key
+        master:
+          get_attr:
+            - master
+            - first_address
+      config:
+        get_resource: config-salt-minion
+      server:
+        get_resource: minion-db3
+
+  # SoftwareConfig that is to run on master.
+  # Executes a salt state.highstate on all attached minions.
+  config-deploy:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: |
+        #!/bin/bash
+        salt '*' saltutil.refresh_pillar
+        salt '*' mine.update
+        salt-run state.sls orchestration.galera_cluster
+
+  # Deploys the the deploy softwareconfig
+  # All minions should be spun up and running salt-minion
+  # before executing this deployment.
+  deploy:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      config:
+        get_resource: config-deploy
+      server:
+        get_resource: master
+    depends_on:
+      - deploy-salt-master
+      - deploy-db-bootstrap
+      - deploy-haproxy
+      - deploy-db2
+      - deploy-db3
+
+outputs:
+  master-ip:
+    value: 
+      get_attr:
+        - master-ip
+        - floating_ip_address
+  
+  minion-db-boostrap-ip:
+    value:
+      get_attr:
+        - minion-db-bootstrap
+        - first_address
+
+  minion-db2:
+    value:
+      get_attr:
+        - minion-db2
+        - first_address
+
+  minion-db3:
+    value:
+      get_attr:
+        - minion-db3
+        - first_address
+
+  haproxy-ip:
+    value:
+      get_attr:
+        - apps-net-port
+        - fixed_ips
+        - 0
+        - ip_address
+
+  # finish-drupal-url:
+  #   value:
+  #     str_replace:
+  #       template: http://$haproxyip/install.php
+  #       params:
+  #         $haproxyip:
+  #           get_attr:
+  #             - minion-haproxy
+  #             - floating_ip_address
+        
+
+  # Uncomment the stdout's and stderr's if problems are occuring.
+  #master-stdout:
+  #  value:
+  #    get_attr:
+  #     - deploy-salt-master
+  #     - deploy_stdout
+  #master-stderr:
+  #  value:
+  #    get_attr:
+  #      - deploy-salt-master
+  #      - deploy_stderr
+
+  # minion-db-stdout:
+  #  value:
+  #    get_attr:
+  #      - minion-group-db
+  #      - minion-stdout
+  #minion-web-stderr:
+  #  value:
+  #    get_attr:
+  #      - minion-group-web
+  #      - minion-stderr
