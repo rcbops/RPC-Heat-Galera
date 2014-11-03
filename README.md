@@ -2,7 +2,7 @@
 * 1 salt-master instance
 * 1 haproxy instance w/ salt-minion
 * 1 MariaDB/Galera bootstrap node with salt-minion
-* 2 MariaDB/Galera Nodes that replicate accross the cluster with salt-minion, where n is an even number.
+* 2 MariaDB/Galera Nodes in addition to the bootstrap node with salt-minion on them. 
 
 # Description:
 
@@ -43,7 +43,7 @@ Here is an example of how to deploy this template using the
 heat stack-create galera-stack -f galera-stack.yaml \
   -e env.yaml -P flavor=m1.small;floating-network-id=<NET_ID>; \
   keyname=<KEYNAME>;image=<IMAGE_ID>;db-username=<username>;db-user-password=<password>; \
-  db-remotehost=<host>;apps-network=<APP_NET_ID>;database=dbname;
+  db-remotehost=<host>;apps-network=<APP_NET_ID>;database=<db_name>
 ```
 
 # Parameter descriptions 
@@ -67,4 +67,4 @@ The heat template takes in several parameters. Below is the description of each.
 
 8. database: The database that will be created for the app 
 
-9. flavor: The size of the database instances. 
+9. flavor: The size of the database instances.
