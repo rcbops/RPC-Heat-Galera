@@ -205,7 +205,7 @@ resources:
       config: |
         #!/bin/bash
         chmod 0700 /root/.ssh/coms_rsa
-        chmod 0600 /srv/pillar/drupal.sls
+        chmod 0600 /srv/pillar/galera/init.sls
 
         # Add coms from minions to master
         echo "$public_key" >> /root/.ssh/authorized_keys
@@ -280,9 +280,9 @@ resources:
         rm /root/.ssh/coms_rsa
         /sbin/ifconfig -a | /usr/bin/awk '/eth.*Ethernet/ {print $1}' | while read E; do /usr/bin/sudo /sbin/dhclient $E; done
 
-  # Software deployment for salt-master. Deploys the salt-master softrware
+  # Software deployment for salt-master. Deploys the salt-master software
   # configuration.
-  # Also lists the git repos necessary to make the drupal stack work.
+  # Also lists the git repos necessary to make the galera stack work.
   deploy-salt-master:
     type: OS::Heat::SoftwareDeployment
     properties:
@@ -443,53 +443,6 @@ resources:
       port_id:
         get_resource: master-port
 
-  # minion-group-db:
-  #   type: OS::Heat::ResourceGroup
-  #   depends_on: deploy-salt-master
-  #   properties:
-  #     count:
-  #       get_param: minion-count
-  #     resource_def:
-  #       type: Salt::Minion
-  #       properties:
-  #         flavor:
-  #           get_param: flavor
-  #         stack-prefix:
-  #           str_replace:
-  #             template: galera-$stackstr-db
-  #             params: 
-  #               $stackstr:
-  #                 get_attr: 
-  #                   - stack-string
-  #                   - value
-  #         private_key:
-  #           get_attr:
-  #             - coms
-  #             - private_key
-  #         public_key:
-  #           get_attr:
-  #             - coms
-  #             - public_key
-  #         image: 
-  #           get_param: image
-  #         network: 
-  #           get_resource: net
-  #         master: 
-  #           get_attr:
-  #             - master
-  #             - first_address
-  #         minion-config:
-  #           get_resource: config-salt-minion
-  #         minion-roles: "db"
-          
-
-  # Floating ip for haproxy node
-  # minion-haproxy-ip:
-  #   type: OS::Neutron::FloatingIP
-  #   properties:
-  #     floating_network_id: 
-  #       get_param: floating-network-id
-
   # Port for haproxy node
   minion-haproxy-port:
     type: OS::Neutron::Port
@@ -538,14 +491,6 @@ resources:
       # Needs to be SOFTWARE_CONFIG when using SoftwareConfigs
       user_data_format: SOFTWARE_CONFIG
 
-  # Associate haproxy floating ip to the port
-  # minion-haproxy-floating-ip-ass: 
-  #   type: OS::Neutron::FloatingIPAssociation
-  #   properties: 
-  #     floatingip_id:
-  #       get_resource: minion-haproxy-ip
-  #     port_id:
-  #       get_resource: minion-haproxy-port
 
   # Deploys the salt-minion software config to the haproxy node.
   deploy-haproxy:
@@ -798,37 +743,5 @@ outputs:
         - fixed_ips
         - 0
         - ip_address
+        - 0
 
-  # finish-drupal-url:
-  #   value:
-  #     str_replace:
-  #       template: http://$haproxyip/install.php
-  #       params:
-  #         $haproxyip:
-  #           get_attr:
-  #             - minion-haproxy
-  #             - floating_ip_address
-        
-
-  # Uncomment the stdout's and stderr's if problems are occuring.
-  #master-stdout:
-  #  value:
-  #    get_attr:
-  #     - deploy-salt-master
-  #     - deploy_stdout
-  #master-stderr:
-  #  value:
-  #    get_attr:
-  #      - deploy-salt-master
-  #      - deploy_stderr
-
-  # minion-db-stdout:
-  #  value:
-  #    get_attr:
-  #      - minion-group-db
-  #      - minion-stdout
-  #minion-web-stderr:
-  #  value:
-  #    get_attr:
-  #      - minion-group-web
-  #      - minion-stderr
