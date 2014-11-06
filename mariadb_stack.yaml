@@ -291,7 +291,7 @@ resources:
             - coms
             - public_key
         state_repos: |
-          https://github.com/rcb/galera
+          https://github.com/rcbops/galera
       config:
         get_resource: config-salt-master
       server:
