@@ -228,7 +228,7 @@ resources:
         while read -r line
         do
             if [ -n "$line" ]; then
-                git clone -b parallalize $line
+                git clone $line
             fi
         done <<< "$state_repos"
 
@@ -291,7 +291,7 @@ resources:
             - coms
             - public_key
         state_repos: |
-          https://github.com/elextro/galera
+          https://github.com/rcb/galera
       config:
         get_resource: config-salt-master
       server:
