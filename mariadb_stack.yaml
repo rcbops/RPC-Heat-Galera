@@ -219,7 +219,6 @@ resources:
         mkdir /srv/salt
         mkdir /srv/salt/orchestration
         mkdir /srv/pillar
-        mkdir /srv/pillar/mysql
         mkdir /srv/pillar/galera
         mkdir /srv/pillar/haproxy
         echo -e 'file_roots:\n  base:\n    - /srv/salt' >> /etc/salt/master
@@ -229,7 +228,7 @@ resources:
         while read -r line
         do
             if [ -n "$line" ]; then
-                git clone $line
+                git clone -b parallalize $line
             fi
         done <<< "$state_repos"
 
@@ -292,7 +291,7 @@ resources:
             - coms
             - public_key
         state_repos: |
-          https://github.com/rcbops/galera
+          https://github.com/elextro/galera
       config:
         get_resource: config-salt-master
       server:
@@ -336,29 +335,42 @@ resources:
               - sls:
                 - galera.haproxy
                 - galera.mysql
-          bootstrap:
+          setup:
+            salt.state:
+              - tgt: '*db*'
+              - sls:
+                - galera
+          bootstrap-start:
             salt.state:
               - tgt: 'roles:db_bootstrap'
               - tgt_type: grain
               - sls:
-                - galera
-              - require:
-                - salt: haproxy
-          non-bootstrap:
+                - galera.start
+              - requires:
+                - salt: setup
+          non-bootstrap-start:
             salt.state:
               - tgt: 'roles:db'
               - tgt_type: grain
               - sls:
-                - galera
+                - galera.start
               - require:
-                - salt: bootstrap
+                - salt: bootstrap-start
+          build-db:
+            salt.state:
+              - tgt: 'roles:db_bootstrap'
+              - tgt_type: grain
+              - sls: 
+                - galera.db
+              - require:
+                - salt: non-bootstrap-start
+
 
         #The top.sls file for salt pillars
         #Dictates which minions get which pillars.
         /srv/pillar/top.sls: |
           base:
             '*':
-              - mysql
               - galera
               
         #The galera pillar. Contains Some basic information for mariadb/galera config and installation
@@ -396,6 +408,13 @@ resources:
                 remotehost: "$remotehost"
               database:
                 name: $database
+              mysql_config:
+                dbuser: root
+                port: 3306
+                socket: /var/lib/mysql/mysql.sock
+                datadir: /var/lib/mysql/db_data
+                maintenance_password: $pw
+                admin_password: $admin_password
             params: 
               $user:
                 get_param: db-username
@@ -405,18 +424,6 @@ resources:
                 get_param: db-remotehost
               $database:
                 get_param: database
-
-        /srv/pillar/mysql/init.sls:
-          str_replace: 
-            template: |
-              mysql_config:
-                dbuser: root
-                port: 3306
-                socket: /var/lib/mysql/mysql.sock
-                datadir: /var/lib/mysql/db_data
-                maintenance_password: $pw
-                admin_password: $admin_password
-            params:
               $pw:
                 get_attr:
                   - secret
@@ -424,7 +431,7 @@ resources:
               $admin_password:
                 get_attr:
                   - admin_password
-                  - value     
+                  - value  
 
       # Get access from the master-port
       networks:
