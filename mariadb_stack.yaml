@@ -104,7 +104,7 @@ resources:
               get_attr:
                 - stack-string
                 - value
-      description: Ping, SSH, MySQL, and web traffic is allowed
+      description: Ping, SSH, MySQL, web, salt, and galera replication traffic is allowed
       rules:
       - protocol: icmp
       - protocol: tcp
@@ -122,6 +122,18 @@ resources:
       - protocol: tcp
         port_range_min: 80
         port_range_max: 80
+      - protocol: tcp
+        port_range_min: 4505
+        port_range_max: 4506
+      - protocol: tcp
+        port_range_min: 30865
+        port_range_max: 30865
+      - protocol: tcp
+        port_range_min: 4567
+        port_range_max: 4568
+      - protocol: tcp
+        port_range_min: 4444
+        port_range_max: 4444
 
   # Keypair for communicating between nodes within the stack.
   # Will allow minions to ssh into the master and vice versa.
@@ -183,7 +195,8 @@ resources:
     properties:
       network_id: 
         get_resource: net
-
+      security_groups: 
+        - get_resource: secgroup
   apps-net-port:
     type: OS::Neutron::Port
     properties:
@@ -437,7 +450,7 @@ resources:
       networks:
         - port:
             get_resource: master-port
-
+      
       # Using SoftwareConfigs - This needs to be set to SOFTWARE_CONFIG
       user_data_format: SOFTWARE_CONFIG
 
@@ -456,14 +469,14 @@ resources:
     properties:
       network_id: 
         get_resource: net
+      security_groups:
+        - get_resource: secgroup
 
   # haproxy minion
   minion-haproxy:
     type: OS::Nova::Server
     depends_on: interface
     properties:
-      key_name:
-        get_param: keyname
       flavor:
         get_param: flavor
       image:
@@ -551,6 +564,8 @@ resources:
       networks:
         - network:
             get_resource: net
+      security_groups:
+        - get_resource: secgroup
 
       # This needs to be set to SOFTWARE_CONFIG when using SoftwareConfigs
       user_data_format: SOFTWARE_CONFIG
@@ -589,7 +604,8 @@ resources:
       networks:
         - network:
             get_resource: net
-
+      security_groups:
+        - get_resource: secgroup
       # This needs to be set to SOFTWARE_CONFIG when using SoftwareConfigs
       user_data_format: SOFTWARE_CONFIG
 
@@ -628,7 +644,8 @@ resources:
       networks:
         - network:
             get_resource: net
-
+      security_groups:
+        - get_resource: secgroup
       # This needs to be set to SOFTWARE_CONFIG when using SoftwareConfigs
       user_data_format: SOFTWARE_CONFIG
 
