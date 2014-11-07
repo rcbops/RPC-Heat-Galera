@@ -295,7 +295,7 @@ resources:
             - coms
             - public_key
         state_repos: |
-          https://github.com/rcbops/galera
+          https://github.com/elextro/galera
       config:
         get_resource: config-salt-master
       server:
@@ -344,6 +344,28 @@ resources:
               - tgt: '*db*'
               - sls:
                 - galera
+          bootstrap-stop:
+            salt.state:
+              - tgt: 'roles:db_bootstrap'
+              - tgt_type: grain
+              - sls:
+                - galera.stop 
+              - requires:
+                - salt: setup 
+          db2-stop:
+            salt.state:
+              - tgt: '*db2*'
+              - sls:
+                - galera.stop
+              - requires:
+                - salt: bootstrap-stop
+          db3-stop:
+            salt.state:
+              - tgt: '*db3*'
+              - sls:
+                - galera.stop
+              - requires: 
+                - salt: db2-stop
           bootstrap-start:
             salt.state:
               - tgt: 'roles:db_bootstrap'
@@ -351,7 +373,7 @@ resources:
               - sls:
                 - galera.start
               - requires:
-                - salt: setup
+                - salt: db3-stop
           non-bootstrap-start:
             salt.state:
               - tgt: 'roles:db'
