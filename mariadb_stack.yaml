@@ -780,5 +780,3 @@ outputs:
         - fixed_ips
         - 0
         - ip_address
-        - 0
-
