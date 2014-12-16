@@ -1,15 +1,15 @@
 heat_template_version: 2013-05-23
 
 description: |
-  Deploys Salt-master and serveral salt-minions for a MariaDB/Galera cluster. 
+  Deploys Salt-master and serveral salt-minions for a MariaDB/Galera cluster.
   One Minion will be for haproxy
   One Minion will act as a bootstrap node
-  <minion-count> minions will act as additional nodes in the cluster.  
+  <minion-count> minions will act as additional nodes in the cluster.
 
-parameter_groups: 
-- label: These are the paramters used to for creating a database user and access rights for that user. 
-  description: These parameters are used for creating user-defined database users and access rights. 
-  parameters: 
+parameter_groups:
+- label: These are the paramters used to for creating a database user and access rights for that user.
+  description: These parameters are used for creating user-defined database users and access rights.
+  parameters:
   - db-username
   - db-user-password
   - db-remotehost
@@ -41,25 +41,25 @@ parameters:
     type: string
     hidden: true
     label: Password for the db-username
-    description: This is the password for the db-username specified. 
+    description: This is the password for the db-username specified.
 
   db-remotehost:
     type: string
     default: "%"
     label: Name of the remote hostname
-    description: The hostname of the remote host that will have access to the database using the username specified above. 
+    description: The hostname of the remote host that will have access to the database using the username specified above.
 
-  apps-network: 
+  apps-network:
     type: string
     label: Network UUID of Apps network
-    description: The network UUID of the network your app (Magento, Drupal, etc.) are on. 
+    description: The network UUID of the network your app (Magento, Drupal, etc.) are on.
 
   database:
     type: string
     label: Database to create for the app
     description: The database name that will be created for the app
 
-  flavor: 
+  flavor:
     type: string
     label: flavor
     description: Flavor of DB instances
@@ -71,7 +71,7 @@ parameters:
 resources:
 
 
-  # Random string to aid in naming things. 
+  # Random string to aid in naming things.
   stack-string:
     type: OS::Heat::RandomString
     properties:
@@ -93,10 +93,10 @@ resources:
       sequence: lettersdigits
 
   #This is the security group for the haproxy node to allow mysql, web, icmp, and  ssh traffic
-  secgroup: 
+  secgroup:
     type: OS::Neutron::SecurityGroup
     properties:
-      name: 
+      name:
         str_replace:
           template: galera-$stackstr-secgroup
           params:
@@ -139,7 +139,7 @@ resources:
               get_attr:
                 - stack-string
                 - value
-      save_private_key: true 
+      save_private_key: true
 
   # Private network for this stack
   net:
@@ -161,7 +161,7 @@ resources:
     type: OS::Neutron::Router
     properties:
       external_gateway_info:
-        network: 
+        network:
           get_param: floating-network-id
 
   # Router interface
@@ -170,31 +170,31 @@ resources:
     properties:
       router_id:
         get_resource: router
-      subnet_id: 
+      subnet_id:
         get_resource: subnet
 
   # One floating ip for the salt-master node
   master-ip:
     type: OS::Neutron::FloatingIP
     properties:
-      floating_network_id: 
+      floating_network_id:
         get_param: floating-network-id
 
   # One port for the salt-master node
   master-port:
     type: OS::Neutron::Port
     properties:
-      network_id: 
+      network_id:
         get_resource: net
-      security_groups: 
+      security_groups:
         - get_resource: secgroup
   apps-net-port:
     type: OS::Neutron::Port
     properties:
       network_id:
         get_param: apps-network
-      security_groups: 
-        - {get_resource: secgroup} 
+      security_groups:
+        - {get_resource: secgroup}
 
   # Software configuration script for the salt-master node
   # Installs salt-master, sets permission on some personality files
@@ -208,6 +208,14 @@ resources:
         - name: state_repos
       config: |
         #!/bin/bash
+        set -ex
+        logdir=/var/log/heat-deployments
+        prefix=${logdir}/config-salt-master
+        mkdir -p $logdir
+        exec &> >(tee -a ${prefix}.log)
+        [ -e ${prefix}.ran ] && exit 0
+
+        chmod -R 0600 ${logdir}
         chmod 0700 /root/.ssh/coms_rsa
         chmod 0600 /srv/pillar/galera/init.sls
 
@@ -216,15 +224,15 @@ resources:
 
         # Install git
         apt-get install -y git
-            
+
         # Install salt master
         echo "Install Salt Master"
-        curl -L http://bootstrap.saltstack.org | sh -s -- -M -N
-        mkdir /srv/salt
-        mkdir /srv/salt/orchestration
-        mkdir /srv/pillar
-        mkdir /srv/pillar/galera
-        mkdir /srv/pillar/haproxy
+        curl -L http://bootstrap.saltstack.org | sh -s -- -M -N git v2014.1.13
+        mkdir -p /srv/salt
+        mkdir -p /srv/salt/orchestration
+        mkdir -p /srv/pillar
+        mkdir -p /srv/pillar/galera
+        mkdir -p /srv/pillar/haproxy
         echo -e 'file_roots:\n  base:\n    - /srv/salt' >> /etc/salt/master
 
         # Clone state/formula repos in state root directory
@@ -239,6 +247,8 @@ resources:
         # Finally - Restart salt service
         service salt-master restart
 
+        touch ${prefix}.ran
+
   # Software configuration for salt minion
   # Installs salt-minion, sets up authentication from minion to master,
   # and sets permissions of any personality files.
@@ -251,26 +261,36 @@ resources:
         - name: master
       config: |
         #!/bin/bash
+        set -ex
+        logdir=/var/log/heat-deployments
+        prefix=${logdir}/config-salt-minion
+        mkdir -p $logdir
+        exec &> >(tee -a ${prefix}.log)
+        [ -e ${prefix}.ran ] && exit 0
+
+        chmod -R 0600 ${logdir}
         chmod 0700 /root/.ssh/coms_rsa
-            
+
         # Add coms from minions to master
         echo "$public_key" >> /root/.ssh/authorized_keys
 
         # Install salt minion
-        curl -L http://bootstrap.saltstack.org | sh -s
+        curl -L http://bootstrap.saltstack.org | sh -s -- git v2014.1.13
         echo master: $master >> /etc/salt/minion
 
         service salt-minion restart
 
         ssh-keyscan -H $master >> /root/.ssh/known_hosts
 
-        echo "Sleeping for 20s"
-        sleep 20
-
         MASTER_PKI_PATH="/etc/salt/pki/master/minions/"
         MASTER_PKI_PATH_PRE="/etc/salt/pki/master/minions_pre/"
         MINION_PKI_PATH="/etc/salt/pki/minion/minion.pub"
-        HOSTNAME=`hostname --fqdn`
+        HOSTNAME="$(python  -c 'import socket; print socket.getfqdn()')"
+
+        while [ ! -s ${MINION_PKI_PATH} ]; do
+            echo "Waiting for ${MINION_PKI_PATH} to have non-zero content."
+            sleep 2
+        done
 
         cp $MINION_PKI_PATH /root/minion_key
 
@@ -282,6 +302,7 @@ resources:
         rm /root/minion_key
         rm /root/.ssh/coms_rsa
         /sbin/ifconfig -a | /usr/bin/awk '/eth.*Ethernet/ {print $1}' | while read E; do /usr/bin/sudo /sbin/dhclient $E; done
+        touch ${prefix}.ran
 
   # Software deployment for salt-master. Deploys the salt-master software
   # configuration.
@@ -309,9 +330,9 @@ resources:
     properties:
       key_name:
         get_param: keyname
-      image: 
+      image:
         get_param: image
-      flavor: 
+      flavor:
         get_param: flavor
       name:
         str_replace:
@@ -320,7 +341,7 @@ resources:
             $stackstr:
               get_attr:
                 - stack-string
-                - value 
+                - value
       personality:
 
         # Private key for ssh'ing into minions
@@ -349,9 +370,9 @@ resources:
               - tgt: 'roles:db_bootstrap'
               - tgt_type: grain
               - sls:
-                - galera.stop 
+                - galera.stop
               - requires:
-                - salt: setup 
+                - salt: setup
           db2-stop:
             salt.state:
               - tgt: '*db2*'
@@ -364,7 +385,7 @@ resources:
               - tgt: '*db3*'
               - sls:
                 - galera.stop
-              - requires: 
+              - requires:
                 - salt: db2-stop
           bootstrap-start:
             salt.state:
@@ -386,7 +407,7 @@ resources:
             salt.state:
               - tgt: 'roles:db_bootstrap'
               - tgt_type: grain
-              - sls: 
+              - sls:
                 - galera.db
               - require:
                 - salt: non-bootstrap-start
@@ -398,9 +419,9 @@ resources:
           base:
             '*':
               - galera
-              
+
         #The galera pillar. Contains Some basic information for mariadb/galera config and installation
-        /srv/pillar/galera/init.sls: 
+        /srv/pillar/galera/init.sls:
           str_replace:
             template: |
               interfaces:
@@ -428,7 +449,7 @@ resources:
                 keyserver: keys.gnupg.net
                 keyid: '1C4CBDCDCD2EFD2A'
                 file: /etc/apt/sources.list
-              user_via_heat: 
+              user_via_heat:
                 name: $user
                 password: $password
                 remotehost: "$remotehost"
@@ -441,10 +462,10 @@ resources:
                 datadir: /var/lib/mysql/db_data
                 maintenance_password: $pw
                 admin_password: $admin_password
-            params: 
+            params:
               $user:
                 get_param: db-username
-              $password: 
+              $password:
                 get_param: db-user-password
               $remotehost:
                 get_param: db-remotehost
@@ -457,20 +478,20 @@ resources:
               $admin_password:
                 get_attr:
                   - admin_password
-                  - value  
+                  - value
 
       # Get access from the master-port
       networks:
         - port:
             get_resource: master-port
-      
+
       # Using SoftwareConfigs - This needs to be set to SOFTWARE_CONFIG
       user_data_format: SOFTWARE_CONFIG
 
   # Associate the master floating ip to the master port
-  master-floating-ip-ass: 
+  master-floating-ip-ass:
     type: OS::Neutron::FloatingIPAssociation
-    properties: 
+    properties:
       floatingip_id:
         get_resource: master-ip
       port_id:
@@ -480,7 +501,7 @@ resources:
   minion-haproxy-port:
     type: OS::Neutron::Port
     properties:
-      network_id: 
+      network_id:
         get_resource: net
       security_groups:
         - get_resource: secgroup
@@ -494,14 +515,14 @@ resources:
         get_param: flavor
       image:
         get_param: image
-      name: 
+      name:
         str_replace:
           template: galera-$stackstr-haproxy
           params:
             $stackstr:
               get_attr:
                 - stack-string
-                - value 
+                - value
       personality:
 
         # Private key for node to node communication
@@ -514,11 +535,11 @@ resources:
         /etc/salt/grains: |
           roles:
             - haproxy
-      
+
       networks:
         - port:
             get_resource: minion-haproxy-port
-        - port: 
+        - port:
             get_resource: apps-net-port
 
       # Needs to be SOFTWARE_CONFIG when using SoftwareConfigs
@@ -553,10 +574,10 @@ resources:
         get_param: image
       flavor:
         get_param: flavor
-      name: 
+      name:
         str_replace:
           template: galera-$stackstr-db-bootstrap
-          params: 
+          params:
             $stackstr:
               get_attr:
                 - stack-string
@@ -593,10 +614,10 @@ resources:
         get_param: image
       flavor:
         get_param: flavor
-      name: 
+      name:
         str_replace:
           template: galera-$stackstr-db2
-          params: 
+          params:
             $stackstr:
               get_attr:
                 - stack-string
@@ -633,10 +654,10 @@ resources:
         get_param: image
       flavor:
         get_param: flavor
-      name: 
+      name:
         str_replace:
           template: galera-$stackstr-db3
-          params: 
+          params:
             $stackstr:
               get_attr:
                 - stack-string
@@ -727,9 +748,16 @@ resources:
       group: script
       config: |
         #!/bin/bash
+        set -ex
+        logdir=/var/log/heat-deployments
+        prefix=${logdir}/config-deploy
+        mkdir -p $logdir
+        exec &> >(tee -a ${prefix}.log)
+        [ -e ${prefix}.ran ] && exit 0
         salt '*' saltutil.refresh_pillar
         salt '*' mine.update
         salt-run state.sls orchestration.galera_cluster
+        touch ${prefix}.ran
 
   # Deploys the the deploy softwareconfig
   # All minions should be spun up and running salt-minion
@@ -750,11 +778,11 @@ resources:
 
 outputs:
   master-ip:
-    value: 
+    value:
       get_attr:
         - master-ip
         - floating_ip_address
-  
+
   minion-db-boostrap-ip:
     value:
       get_attr:
