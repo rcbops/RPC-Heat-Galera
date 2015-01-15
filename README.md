@@ -40,8 +40,8 @@ Here is an example of how to deploy this template using the
 [python-heatclient](https://github.com/openstack/python-heatclient):
 
 ```
-heat stack-create galera-stack -f galera-stack.yaml \
-  -e env.yaml -P flavor=m1.small;floating-network-id=<NET_ID>; \
+heat stack-create galera-stack -f mariadb_stack.yaml \
+  -P flavor=m1.small;floating-network-id=<NET_ID>; \
   keyname=<KEYNAME>;image=<IMAGE_ID>;db-username=<username>;db-user-password=<password>; \
   db-remotehost=<host>;apps-network=<APP_NET_ID>;database=<db_name>
 ```
