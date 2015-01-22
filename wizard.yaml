@@ -1,20 +1,14 @@
 name: MariaDB Galera Cluster
 release: 1.0
+logo: assets/logo.png
+
 short_desc: |
   RPC-Heat-Galera delivers a deployable configuration of MariaDB Galera Cluster using the Heat orchestration engine available in any Rackspace OpenStack Private Cloud.
 long_desc: |
   MariaDb Galera Cluster provides a synchronous multimaster topology for replication with read and write scalability.
 architecture: |
   Our MariaDB Galera Cluster architecture is designed to provide a resillient platform to host your relational data in a Private Cloud. With a deployment driven by the OpenStack Heat orchestration engine and Salt configuration management, we are able to deliver MariaDB Galera Cluster as a repeatable, scalable, production-ready deployment.
-design_specs: |
+design_specs:
   - Network isolation and security group isolation at various levels within the stack provide enhanced Cloud security. The database servers are isolated from the web tier DMZ, and only available through a bastion gateway load balancer to furher protect data.
-questions:
-  - keyname: Choose an SSH keypair for access to the Salt Master.
-  - image: Choose an image every instance in the stack will use.
-  - floating-network-id: Choose an external network.
-  - apps-network: Choose an existing application network. This stack will create a port on this network to provide access to your application.
-  - flavor: Choose the flavor every instance in the stack will use.
-  - db-username: Provide username of the account to create for access to the database.
-  - db-user-password: Provide the password of the account to create for access to the database.
-  - db-remote-host: Provide the remote host of the account to create for access to the database.
-  - database: Provide the name of the database to create.
+
+heat_template: mariadb_stack.yaml

@@ -7,13 +7,16 @@ description: |
   <minion-count> minions will act as additional nodes in the cluster.
 
 parameter_groups:
-- label: These are the paramters used to for creating a database user and access rights for that user.
-  description: These parameters are used for creating user-defined database users and access rights.
-  parameters:
+- parameters:
+  - keyname
+  - image
+  - floating-network-id
+  - apps-network
+  - flavor
   - db-username
   - db-user-password
   - db-remotehost
-  - apps-network
+  - database
 
 parameters:
 
