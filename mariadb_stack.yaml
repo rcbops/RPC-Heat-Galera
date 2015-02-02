@@ -320,6 +320,7 @@ resources:
             - public_key
         state_repos: |
           https://github.com/rcbops/galera
+          https://github.com/rcbops/base-hardening-formula
       config:
         get_resource: config-salt-master
       server:
@@ -465,6 +466,37 @@ resources:
                 datadir: /var/lib/mysql/db_data
                 maintenance_password: $pw
                 admin_password: $admin_password
+              user-ports:
+                ssh:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 22
+                salt-master:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 4505
+                salt-minion:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 4506
+                galera:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 4567
+                rsync:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 4444
+                mysql-read:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 3306
+                mysql-write:
+                  chain: INPUT
+                  proto: tcp
+                  dport: 13306
+
+
             params:
               $user:
                 get_param: db-username
@@ -760,6 +792,7 @@ resources:
         salt '*' saltutil.refresh_pillar
         salt '*' mine.update
         salt-run state.sls orchestration.galera_cluster
+        salt '*' state.sls base-hardening-formula.base-hardening-formula
         touch ${prefix}.ran
 
   # Deploys the the deploy softwareconfig
