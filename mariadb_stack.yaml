@@ -230,12 +230,13 @@ resources:
 
         # Install salt master
         echo "Install Salt Master"
-        curl -L http://bootstrap.saltstack.org | sh -s -- -M -N git v2014.1.13
+        curl -L http://bootstrap.saltstack.org | sh -s -- -M -N git v2014.7.1
         mkdir -p /srv/salt
         mkdir -p /srv/salt/orchestration
         mkdir -p /srv/pillar
         mkdir -p /srv/pillar/galera
         mkdir -p /srv/pillar/haproxy
+        mkdir -p /srv/reactor
         echo -e 'file_roots:\n  base:\n    - /srv/salt' >> /etc/salt/master
 
         # Clone state/formula repos in state root directory
@@ -243,7 +244,7 @@ resources:
         while read -r line
         do
             if [ -n "$line" ]; then
-                git clone $line
+                git clone -b cantu-reactor $line
             fi
         done <<< "$state_repos"
 
@@ -278,31 +279,30 @@ resources:
         echo "$public_key" >> /root/.ssh/authorized_keys
 
         # Install salt minion
-        curl -L http://bootstrap.saltstack.org | sh -s -- git v2014.1.13
+        curl -L http://bootstrap.saltstack.org | sh -s -- git v2014.7.1
         echo master: $master >> /etc/salt/minion
 
         service salt-minion restart
 
-        ssh-keyscan -H $master >> /root/.ssh/known_hosts
+        # ssh-keyscan -H $master >> /root/.ssh/known_hosts
 
-        MASTER_PKI_PATH="/etc/salt/pki/master/minions/"
-        MASTER_PKI_PATH_PRE="/etc/salt/pki/master/minions_pre/"
-        MINION_PKI_PATH="/etc/salt/pki/minion/minion.pub"
-        HOSTNAME="$(python  -c 'import socket; print socket.getfqdn()')"
+        # MASTER_PKI_PATH="/etc/salt/pki/master/minions/"
+        # MASTER_PKI_PATH_PRE="/etc/salt/pki/master/minions_pre/"
+        # MINION_PKI_PATH="/etc/salt/pki/minion/minion.pub"
+        # HOSTNAME="$(python  -c 'import socket; print socket.getfqdn()')"
 
-        while [ ! -s ${MINION_PKI_PATH} ]; do
-            echo "Waiting for ${MINION_PKI_PATH} to have non-zero content."
-            sleep 2
-        done
+        # while [ ! -s ${MINION_PKI_PATH} ]; do
+        #     echo "Waiting for ${MINION_PKI_PATH} to have non-zero content."
+        #     sleep 2
+        # done
 
-        cp $MINION_PKI_PATH /root/minion_key
+        # cp $MINION_PKI_PATH /root/minion_key
 
-        scp -i /root/.ssh/coms_rsa /root/minion_key root@$master:/tmp/$HOSTNAME
+        # scp -i /root/.ssh/coms_rsa /root/minion_key root@$master:/tmp/$HOSTNAME
 
-        ssh -i /root/.ssh/coms_rsa root@$master "mv /tmp/$HOSTNAME $MASTER_PKI_PATH$HOSTNAME; chmod 700 $MASTER_PKI_PATH$HOSTNAME; rm $MASTER_PKI_PATH_PRE$HOSTNAME"
+        # ssh -i /root/.ssh/coms_rsa root@$master "mv /tmp/$HOSTNAME $MASTER_PKI_PATH$HOSTNAME; chmod 700 $MASTER_PKI_PATH$HOSTNAME; rm $MASTER_PKI_PATH_PRE$HOSTNAME"
 
-        service salt-minion restart
-        rm /root/minion_key
+        #rm /root/minion_key
         rm /root/.ssh/coms_rsa
         /sbin/ifconfig -a | /usr/bin/awk '/eth.*Ethernet/ {print $1}' | while read E; do /usr/bin/sudo /sbin/dhclient $E; done
         touch ${prefix}.ran
@@ -319,8 +319,7 @@ resources:
             - coms
             - public_key
         state_repos: |
-          https://github.com/rcbops/galera
-          https://github.com/rcbops/base-hardening-formula
+          https://github.com/elextro/galera
       config:
         get_resource: config-salt-master
       server:
@@ -354,6 +353,17 @@ resources:
             - coms
             - private_key
 
+        /etc/salt/master.d/reactor.conf: |
+          reactor:
+            - 'salt/auth':
+              - /srv/reactor/auth-pending.sls
+
+        /srv/reactor/auth-pending.sls: |
+          {% if 'act' in data and data['act'] == 'pend' and data['id'].startswith('galera') %}
+          minion_add:
+            wheel.key.accept
+            - match: {{ data['id'] }}
+          {% endif %}
         #The top.sls file for salt states.
         #Dictates which minions get which formulas
         /srv/salt/orchestration/galera_cluster.sls: |
@@ -362,7 +372,7 @@ resources:
               - tgt: 'roles:haproxy'
               - tgt_type: grain
               - sls:
-                - galera.haproxy
+                - galera.haproxy-setup
                 - galera.mysql
           setup:
             salt.state:
@@ -374,21 +384,21 @@ resources:
               - tgt: 'roles:db_bootstrap'
               - tgt_type: grain
               - sls:
-                - galera.stop
+                - galera.stop-mysql
               - requires:
                 - salt: setup
           db2-stop:
             salt.state:
               - tgt: '*db2*'
               - sls:
-                - galera.stop
+                - galera.stop-mysql
               - requires:
                 - salt: bootstrap-stop
           db3-stop:
             salt.state:
               - tgt: '*db3*'
               - sls:
-                - galera.stop
+                - galera.stop-mysql
               - requires:
                 - salt: db2-stop
           bootstrap-start:
@@ -396,7 +406,7 @@ resources:
               - tgt: 'roles:db_bootstrap'
               - tgt_type: grain
               - sls:
-                - galera.start
+                - galera.start-mysql
               - requires:
                 - salt: db3-stop
           non-bootstrap-start:
@@ -404,7 +414,7 @@ resources:
               - tgt: 'roles:db'
               - tgt_type: grain
               - sls:
-                - galera.start
+                - galera.start-mysql
               - require:
                 - salt: bootstrap-start
           build-db:
@@ -412,7 +422,7 @@ resources:
               - tgt: 'roles:db_bootstrap'
               - tgt_type: grain
               - sls:
-                - galera.db
+                - galera.build-db
               - require:
                 - salt: non-bootstrap-start
 
@@ -495,8 +505,6 @@ resources:
                   chain: INPUT
                   proto: tcp
                   dport: 13306
-
-
             params:
               $user:
                 get_param: db-username
@@ -792,7 +800,7 @@ resources:
         salt '*' saltutil.refresh_pillar
         salt '*' mine.update
         salt-run state.sls orchestration.galera_cluster
-        salt '*' state.sls base-hardening-formula.base-hardening-formula
+        #salt '*' state.sls base-hardening-formula.base-hardening-formula
         touch ${prefix}.ran
 
   # Deploys the the deploy softwareconfig
