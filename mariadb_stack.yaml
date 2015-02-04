@@ -136,6 +136,10 @@ resources:
       - protocol: tcp
         port_range_min: 4444
         port_range_max: 4444
+        remote_ip_prefix:
+          get_attr:
+            - subnet
+            - cidr
 
   # Keypair for communicating between nodes within the stack.
   # Will allow minions to ssh into the master and vice versa.
@@ -289,28 +293,7 @@ resources:
         # Install salt minion
         curl -L http://bootstrap.saltstack.org | sh -s -- git v2014.7.1
         echo master: $master >> /etc/salt/minion
-
         service salt-minion restart
-
-        # ssh-keyscan -H $master >> /root/.ssh/known_hosts
-
-        # MASTER_PKI_PATH="/etc/salt/pki/master/minions/"
-        # MASTER_PKI_PATH_PRE="/etc/salt/pki/master/minions_pre/"
-        # MINION_PKI_PATH="/etc/salt/pki/minion/minion.pub"
-        # HOSTNAME="$(python  -c 'import socket; print socket.getfqdn()')"
-
-        # while [ ! -s ${MINION_PKI_PATH} ]; do
-        #     echo "Waiting for ${MINION_PKI_PATH} to have non-zero content."
-        #     sleep 2
-        # done
-
-        # cp $MINION_PKI_PATH /root/minion_key
-
-        # scp -i /root/.ssh/coms_rsa /root/minion_key root@$master:/tmp/$HOSTNAME
-
-        # ssh -i /root/.ssh/coms_rsa root@$master "mv /tmp/$HOSTNAME $MASTER_PKI_PATH$HOSTNAME; chmod 700 $MASTER_PKI_PATH$HOSTNAME; rm $MASTER_PKI_PATH_PRE$HOSTNAME"
-
-        #rm /root/minion_key
         rm /root/.ssh/coms_rsa
         /sbin/ifconfig -a | /usr/bin/awk '/eth.*Ethernet/ {print $1}' | while read E; do /usr/bin/sudo /sbin/dhclient $E; done
         touch ${prefix}.ran
@@ -327,7 +310,8 @@ resources:
             - coms
             - public_key
         state_repos: |
-          https://github.com/elextro/galera
+          https://github.com/rcbops/galera
+          https://github.com/rcbops/base-hardening-formula
       config:
         get_resource: config-salt-master
       server:
@@ -808,7 +792,7 @@ resources:
         salt '*' saltutil.refresh_pillar
         salt '*' mine.update
         salt-run state.sls orchestration.galera_cluster
-        #salt '*' state.sls base-hardening-formula.base-hardening-formula
+        salt '*' state.sls base-hardening-formula.base-hardening-formula
         touch ${prefix}.ran
 
   # Deploys the the deploy softwareconfig
