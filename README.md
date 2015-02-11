@@ -7,7 +7,7 @@
 # Description:
 
 
-This heat template deploys a salt stack on the cloud, then deploys a MariaDB/Galera cluster. It utilizes heat SoftareDeployment, SoftwareCofig and personalities to load pillars, install salt, download the MariaDB/Galera salt states, and run the orchestration runner. 
+This heat template deploys a salt stack on the cloud, then deploys a MariaDB/Galera cluster. It utilizes heat SoftwareDeployment, SoftwareConfig and personalities to load pillars, install salt, download the MariaDB/Galera salt states, and run the orchestration runner. 
 
 Requirements
 ============
@@ -26,7 +26,7 @@ Requirements
   * OS::Nova::Server
   * OS::Nova::KeyPair
 
-* An Ubuntu image (12.04 or newer) preconfigured with heat-cfntools and heat confog-script. 
+* An Ubuntu image (12.04 or newer) preconfigured with heat-cfntools and heat config-script. 
 Instructions for creating a heat-cfntools enabled image for use with Heat can be 
 found [here] (http://docs.openstack.org/developer/heat/getting_started/jeos_building.html).
 
