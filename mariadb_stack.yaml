@@ -22,50 +22,50 @@ parameters:
 
   keyname:
     type: string
-    label: Salt-Master Keyname.
-    description: The name of the key that should be used to ssh into the Salt-Master.
+    label: Salt-Master Key Name
+    description: Name of the key used to ssh into the Salt-Master.
 
   image:
     type: string
     label: Image Name
-    description: Name of the existing image to use for every vm spun up by this stack. The image should have heat-config and heat-config-script baked in.
+    description: Name of the existing image to use for every virtual machine created by this stack. The image should have the heat-config and heat-config-script files included.
 
   floating-network-id:
     type: string
     label: External Network UUID
-    description: UUID of the external network. The private network created by this stack will route to this network. Also any floating ip's needed by this stack will come this network.
+    description: UUID of the external network. The private network created by this stack will route to this network. Any floating IP addresses needed by this stack will also route to this network.
 
   db-username:
     type: string
-    label: Username to create on the database
-    description: The username that will be created on the galera cluster
+    label: Username to Create on the Database
+    description: Username that will be created on the Galera cluster.
 
   db-user-password:
     type: string
     hidden: true
-    label: Password for the db-username
-    description: This is the password for the db-username specified.
+    label: Password for the Database Username
+    description: Password for the database username specified.
 
   db-remotehost:
     type: string
     default: "%"
-    label: Name of the remote hostname
-    description: The hostname of the remote host that will have access to the database using the username specified above.
+    label: Name of the Remote Host
+    description: Hostname of the remote host that will have access to the database using the username specified above.
 
   apps-network:
     type: string
-    label: Network UUID of Apps network
-    description: The network UUID of the network your app (Magento, Drupal, etc.) are on.
+    label: Network UUID of Application Network
+    description: Network UUID of the network where you run your applications (for example, Magento, Drupal).
 
   database:
     type: string
-    label: Database to create for the app
-    description: The database name that will be created for the app
+    label: Name of Database to Create for the Application
+    description: Database name that will be created for the application.
 
   flavor:
     type: string
-    label: flavor
-    description: Flavor of DB instances
+    label: Flavor
+    description: Flavor (size) of the database instances.
     default: m1.small
 
 
