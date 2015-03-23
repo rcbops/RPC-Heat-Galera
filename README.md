@@ -70,7 +70,7 @@ The heat template takes in several parameters. Below is the description of each.
 9. flavor: The size of the database instances.
 
 #Architecture
-This database was intended to be ran in conjunction with specific applications. However, it can be configured manually by any application. Databases and tables can be added by logging in as root. See the "Accessing mysql cluster as root" section. 
+This database was intended to be ran in conjunction with specific applications. However, it can be configured manually for any application. Databases and tables can be added by logging in as root. See the "Accessing mysql cluster as root" section. 
 
 The diagram below illustrates the architecture
 ![](http://718016a9d23737f3d804-7671e86526a10735410d8ae5040e7d55.r41.cf1.rackcdn.com/GaleraHeatSolution.png)
