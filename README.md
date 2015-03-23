@@ -68,3 +68,58 @@ The heat template takes in several parameters. Below is the description of each.
 8. database: The database that will be created for the app 
 
 9. flavor: The size of the database instances.
+
+#Architecture
+This database was intended to be ran in conjunction with specific applications, although it can be used for any application. Databases and tables can be added by logging in as root. See the "Accessing mysql cluster as root" section. 
+
+The diagram below explains the architecture
+![](http://718016a9d23737f3d804-7671e86526a10735410d8ae5040e7d55.r41.cf1.rackcdn.com/GaleraHeatSolution.png)
+
+The application network and the neutron external network are required to be in place before the stack is created. The stack will ask for these networks as parameters (See above section on heat parameters).
+
+The stack creates an HAProxy node which load balances between the database nodes. This node is both in the application and database network. 
+
+The Salt-master node is the only node in this stack with a floating-ip. It's responsible for the configuration management of the database cluster. Furthermore, it can be used to access the other nodes in the database network. Including the HAProxy node.
+
+The database nodes will be on their own network, accessible by an ssh key "/root/.ssh/coms_rsa" placed on all the nodes. 
+
+
+#Quick Start Guide
+##Running the heat templates. 
+With the rackspace solution tab installed, navigate to the Rackspace tab on the left, then to the Solutions section. A screen like the one below should appear.
+![](http://718016a9d23737f3d804-7671e86526a10735410d8ae5040e7d55.r41.cf1.rackcdn.com/SolutionsTab.png)
+Choose the openstack resources from the drop down menu that fits your environment. Then, choose a username, password, remote host, and database to be configured on the MariaDB/Galera cluster.
+##Accessing app database. 
+You can log into the database created as the user specified from the parameters from the remote host also specified in the parameters. 
+
+In this deployment, the HAproxy node can be used to access the database. Since the salt-master node is the only node with a floating IP, it is possible to access the HAProxy node from the salt-master node. Simply ssh into the salt-master node, then, by using the SSH key set up for all the salt nodes, ssh into the HAProxy node. 
+
+SSH'ing into the salt-master
+```shell
+root@yourbox:~# ssh -i <keypair> ec2-user@<salt-master-ip>
+```
+SSH'ing into the HAProxy node. Make sure to use the IP address on the same network as the salt-master.
+```shell
+$ sudo su
+root@salt-master:~# ssh -i /root/.ssh/coms_rsa root@<haproxy-ip>
+```
+From the haproxy node, the database created for the app can be created. 
+```shell
+mysql -u<user-specified> -p<password-specified> -h 127.0.0.1
+```
+##Accessing mysql cluster as root
+If more databases, tables, or users need to be created, you can use the following method to log in as root user. Note that by default, remote login as root has been disabled. 
+
+First, log into one of the database nodes from the HAProxy node. 
+```shell
+root@salt-master:~# ssh -i /root/.ssh/coms_rsa root@<database-node-ip>
+```
+To obtain the root password for your database, navigate the stack's resources tab, then find the admin_password resource. The value for this resource is the root password for your database. 
+![](http://718016a9d23737f3d804-7671e86526a10735410d8ae5040e7d55.r41.cf1.rackcdn.com/admin_password.png)
+
+Use the admin_password resource to login to the database as root.
+```shell
+root@database-node:~# mysql -uroot -p<admin-password>
+```
+
+
