@@ -70,18 +70,18 @@ The heat template takes in several parameters. Below is the description of each.
 9. flavor: The size of the database instances.
 
 #Architecture
-This database was intended to be ran in conjunction with specific applications, although it can be used for any application. Databases and tables can be added by logging in as root. See the "Accessing mysql cluster as root" section. 
+This database was intended to be ran in conjunction with specific applications. However, it can be configured manually by any application. Databases and tables can be added by logging in as root. See the "Accessing mysql cluster as root" section. 
 
 The diagram below illustrates the architecture
 ![](http://718016a9d23737f3d804-7671e86526a10735410d8ae5040e7d55.r41.cf1.rackcdn.com/GaleraHeatSolution.png)
 
-The application network and the neutron external network are required to be in place before the stack is created. The stack will ask for these networks as parameters (See above section on heat parameters).
+The application network and the neutron external network are required to be in place before the stack is created. The template will ask for these networks as parameters (See above section on heat parameters).
 
-The stack creates an HAProxy node which load balances between the database nodes. This node is both in the application and database network. 
+The template creates an HAProxy node which load balances between the database nodes. This node is both in the application and database network. 
 
 The Salt-master node is the only node in this stack with a floating-ip. It's responsible for the configuration management of the database cluster. Furthermore, it can be used to access the other nodes in the database network, including the HAProxy node.
 
-The database nodes will be on their own network, accessible by an ssh key "/root/.ssh/coms_rsa" placed on all the nodes. 
+The database nodes will be on their own network, accessible by an ssh key "/root/.ssh/coms_rsa" placed on all the nodes the template creates.
 
 
 #Quick Start Guide
