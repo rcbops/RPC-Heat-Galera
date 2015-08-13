@@ -4,7 +4,7 @@ description: |
   Deploys Salt-master and serveral salt-minions for a MariaDB/Galera cluster.
   One Minion will be for haproxy
   One Minion will act as a bootstrap node
-  Two minions will act as additional nodes in the cluster.
+  <minion-count> minions will act as additional nodes in the cluster.
 
 parameter_groups:
 - parameters:
