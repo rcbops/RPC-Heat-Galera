@@ -242,7 +242,10 @@ resources:
 
         # Install salt master
         echo "Install Salt Master"
-        curl -L http://bootstrap.saltstack.org | sh -s -- -M -N git v2014.7.1
+        add-apt-repository ppa:saltstack/salt
+        apt-get update -y
+        apt-get install -y salt-master
+
         mkdir -p /srv/salt
         mkdir -p /srv/salt/orchestration
         mkdir -p /srv/pillar
@@ -291,7 +294,11 @@ resources:
         echo "$public_key" >> /root/.ssh/authorized_keys
 
         # Install salt minion
-        curl -L http://bootstrap.saltstack.org | sh -s -- git v2014.7.1
+        add-apt-repository ppa:saltstack/salt
+        apt-get update -y
+        apt-get install -y salt-minion
+        #Installing debconf-utils because deconf.set does not return
+        apt-get install debconf-utils -y
         echo master: $master >> /etc/salt/minion
         service salt-minion restart
         rm /root/.ssh/coms_rsa
